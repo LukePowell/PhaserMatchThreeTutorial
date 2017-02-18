@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Part 1: Generating the Grid</title>
+    <script src="js/phaser.min.js"></script>
+</head>
+<body>
+<p>When we create the starting grid we want to prevent matches. Lets think about how we are generating our grid. We are
+    going from the top left to the bottom right. This means that any one point only the element above and behind exists.
+    If we want to check for duplicates we simply need to check these two values.</p>
+<a href="part2.html">Previous</a>
+<a href="part4.html">Next</a>
+<script>
+
+    var game = new Phaser.Game(800, 600, Phaser.AUTO, '', {preload: preload, create: create, update: update});
+    //This will hold our 2D array to represent our board. In JavaScript this is accomplished as an array of arrays
+    //With each array being one row in our code. To get an individual element we use board[row][column] to get an individual
+            //element
+            // ex.
+            // 0: [1, 2, 3, 4, 5, 6]
+            // 2: [7 ,8, 9, 10, 11, 12]
+            var board;
+
+            //Gems is a Phaser Group that is responsible for containing all of our gem sprites
+            var gems;
+
+            //Each Gem in our sprite sheet is 48x48 pixels, we use a var to prevent using any magic numbers
+            const elementSize = 48;
+            //The number of columns, again we want to prevent magic numbers, if we see numberOfColumns in our code it is easier
+            //to know why compared to an 8
+            const numberOfColumns = 8;
+            //Similar ato numberOfColumns we want to have a means to refer to the number of rows we have in a readable manner
+            const numberOfRows = 8;
+
+            function preload() {
+                //Before we can do anything with Phaser we need to tell it what assets we are going to use.
+                //To accomplish this Phaser uses a simple tagging system, when you load an asset you give it a name, then when
+                //you want to use it in a game you can simply tell Phaser to load the named asset. This allow us to only load
+                //the asset from disk once
+                //See: https://phaser.io/tutorials/making-your-first-phaser-game/part2
+                //game.load.spritesheet(name, source, widthOfElement, heightOfElement)
+                game.load.spritesheet('gem', 'assets/gems.png', elementSize, elementSize);
+            }
+
+            function create() {
+                createGrid();
+            }
+
+
+            function update() {
+            }
+
+            /**
+             * Small helper function, this allows us to get a value from min to max inclusive.
+             * @param min The lower bound
+             * @param max The upper bound
+             * @returns {*} A random value from min to max including max
+             */
+            function getRandomIntInclusive(min, max) {
+                min = Math.ceil(min);
+                max = Math.floor(max);
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+
+            /**
+             * This tests to see if a row and column is in bounds. This prevents us from indexing the array out of bounds.
+             * And allows us to skip various checks.
+             * @param row The row
+             * @param column The column
+             * @returns {boolean} True if the (column, row) is in bounds else false. Namely if we have a index < 0 or >= width/height
+             */
+            function isValidIndex(row, column) {
+                return row > 0 && row <= numberOfRows && column >= 0 && column < numberOfColumns;
+            }
+
+
+            function createGrid() {
+                //Create our gems group
+                gems = game.add.group();
+
+
+                //If we want we can center the grid in the center of the screen.
+                //game.width / 2 and game.height / 2 give the center of center of the screen. However a group is also positioned
+                //by its upper left corner so we need to need to subtract half of the width/height in each respective direction
+                gems.x = game.width / 2 - ((numberOfColumns / 2) * elementSize);
+                gems.y = game.height / 2 - ((numberOfRows / 2) * elementSize);
+
+                //Our board starts off with an empty array, we will push additional elements
+                board = [];
+
+                for (var row = 0; row < numberOfRows; ++row) {
+                    //We use this array to store each element in this row
+                    var rowElements = [];
+
+            //To make our grid we want to push our row into the board, note row is a reference so we if we do row.push
+            //it will affect this
+            board.push(rowElements);
+            for (var column = 0; column < numberOfColumns; ++column) {
+                //This array contains all possible frames we can start with. We will check the element above us and
+                //to the left of us if they exist and remove those choices from this array. Finally we will chose
+                //a random element of the array. As we removed the values of the elements that could make matches
+                //we will be guaranteed not to have a match
+                var validElements = [0, 1, 2, 3, 4, 5];
+
+                //To the left
+                if (isValidIndex(row, column     - 1)) {
+                    console.log(board);
+                    validElements.splice(validElements.indexOf(board[row][column - 1].frame), 1);
+                }
+                //Above
+                if (isValidIndex(row - 1, column)) {
+                    validElements.splice(validElements.indexOf(board[row - 1][column].frame), 1);
+                }
+
+                //Create a gem, to determine its position we simply multiply the current column and row by elementSize
+                //For (0,0) this gives us (0,0), then for (1,0) 48, 0 and so on as the elements are positioned by their
+                //top left corner this will place them into a neat grid. Feel free to use a sheet of graph paper, and
+                //a size of 1 to check this math
+                var gem = gems.create(column * elementSize, row * elementSize, 'gem');
+
+                //Instead of just generating a random number, we select one of the remaining values form validElements
+                //note as getRandomIntInclusive is inclusive we need to subtract one from the length, you could
+                //optionally make an exclusive version of getRandomInt
+                gem.frame = validElements[getRandomIntInclusive(0, validElements.length-1)];
+
+                //Finally we have created a gem and set its colour to a random value all that is left is to add it to the
+                //row, as we already added this row to the board we do not need anything besides add it to the row
+                rowElements.push(gem);
+            }
+        }
+    }
+</script>
+</body>
+</html>
