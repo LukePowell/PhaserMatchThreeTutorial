@@ -1,2 +1,4 @@
 # PhaserMatchThreeTutorial
-Tutorial on creating a match 3 game in Phaser
+Tutorial on creating a match three game in Phaser
+http://dragonwellstudios.nfshost.com 
+Assets from Kenney: http://kenney.nl/assets
