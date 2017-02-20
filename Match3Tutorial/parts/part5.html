@@ -6,11 +6,12 @@
     <script src="js/phaser.min.js"></script>
 </head>
 <body>
-<p>When we create the starting grid we want to prevent matches. Lets think about how we are generating our grid. We are
-    going from the top left to the bottom right. This means that any one point only the element above and behind exists.
-    If we want to check for duplicates we simply need to check these two values.</p>
-<a href="part1.html">Previous</a>
-<a href="part3.html">Next</a>
+<p>The next step we want to worry about is making sure we only swap pieces if the move could ever be valid. As it is
+    we can swap any two pieces even if they are not adjacent. To fix this we will add in an isAdjacentMethod. This is a
+    simple function as we want to determine if the distance to a new position is 1
+</p>
+<a href="part4.html">Previous</a>
+<a href="part6.html">Next</a>
 <script>
 
     var game = new Phaser.Game(800, 600, Phaser.AUTO, '', {preload: preload, create: create, update: update});
@@ -33,6 +34,12 @@
     //Similar ato numberOfColumns we want to have a means to refer to the number of rows we have in a readable manner
     const numberOfRows = 8;
 
+    var selectedScale = 1.2;
+    var normalScale = 1.0;
+
+    //This will store the gem that we currently have selected, or null if no gem is currently selected
+    var selectedGem = null;
+
     function preload() {
         //Before we can do anything with Phaser we need to tell it what assets we are going to use.
         //To accomplish this Phaser uses a simple tagging system, when you load an asset you give it a name, then when
@@ -41,6 +48,9 @@
         //See: https://phaser.io/tutorials/making-your-first-phaser-game/part2
         //game.load.spritesheet(name, source, widthOfElement, heightOfElement)
         game.load.spritesheet('gem', 'assets/gems.png', elementSize, elementSize);
+
+        //Register our method to handle selecting an orb
+        game.input.onDown.add(selectGem);
     }
 
     function create() {
@@ -72,7 +82,85 @@
      * @returns {boolean} True if the (column, row) is in bounds else false. Namely if we have a index < 0 or >= width/height
      */
     function isValidIndex(row, column) {
-        return row > 0 && row <= numberOfRows && column >= 0 && column < numberOfColumns;
+        return row >= 0 && row <= numberOfRows && column >= 0 && column < numberOfColumns;
+    }
+
+
+    function getRow(yPosition){
+        return Math.floor((yPosition - getCenterY()) / elementSize);
+    }
+
+    function getColumn(xPosition){
+        return  Math.floor((xPosition - getCenterX()) / elementSize);
+    }
+
+    function isAdjacent(row1, column1, row2, column2){
+        return ((row1 - row2) * (row1 - row2) + (column1 - column2) * (column1 - column2)) == 1;
+    }
+    /**
+     * Responds to mouse down events
+     */
+    function selectGem() {
+        //We translated our grid to the center of the map, here we undo that translation before we divide by elementSize
+        //this allows the upper left to be (0,0) which is what we want
+
+        //We ignore the event we are passed in and use game.input.x and game.input.y as that is relative to Phasers
+        //top left not the web pages
+        var column = getColumn(game.input.x);
+        var row = getRow(game.input.y);
+
+        if(!isValidIndex(row, column)){
+            return;
+        }
+
+        if (selectedGem != null) {
+            //Calculate where the selected gem is in the board, note we use worldPosition here.
+            //position and x/y are relative to the top of the group. worldPosition gives us the position of the object
+            //in the world reference frame. This allow us to use are helpful getColumn and getRow function
+            var selectedColumn = getColumn(selectedGem.worldPosition.x);
+            var selectedRow = getRow(selectedGem.worldPosition.y);
+
+            if(!isAdjacent(row, column, selectedRow, selectedColumn)){
+                //Reset the size of the selected gem
+                selectedGem.scale.set(normalScale, normalScale);
+                selectedGem = null;
+                return;
+            }
+            //Swap the selected gem and the gem the user just clicked
+            var temp = board[row][column];
+            board[row][column] = board[selectedRow][selectedColumn];
+            board[selectedRow][selectedColumn] = temp;
+
+            //Swap the positions of the gems
+            temp = board[row][column].position;
+            board[row][column].position = board[selectedRow][selectedColumn].position;
+            board[selectedRow][selectedColumn].position = temp;
+
+            //Reset the size of the selected gem
+            selectedGem.scale.set(normalScale, normalScale);
+            selectedGem = null;
+        }else {
+            selectedGem = board[row][column];
+            selectedGem.scale.set(selectedScale, selectedScale);
+        }
+    }
+
+    //These two functions where moved to functions so we can reuse the code. When calculating the grid position of where
+    //we clicked from the x and the y we need to subtract this value, in our calculations
+    /**
+     * Returns the position of the top left corner of the grid x position
+     * @returns {number} The x position of the top left corner of the grid
+     */
+    function getCenterX() {
+        return game.width / 2 - ((numberOfColumns / 2) * elementSize);
+    }
+
+    /**
+     * Returns the the top left corner of the grid's y position
+     * @returns {number} The y position of the top left corner of the grid
+     */
+    function getCenterY() {
+        return game.height / 2 - ((numberOfRows / 2) * elementSize);
     }
 
 
@@ -80,12 +168,11 @@
         //Create our gems group
         gems = game.add.group();
 
-
         //If we want we can center the grid in the center of the screen.
         //game.width / 2 and game.height / 2 give the center of center of the screen. However a group is also positioned
         //by its upper left corner so we need to need to subtract half of the width/height in each respective direction
-        gems.x = game.width / 2 - ((numberOfColumns / 2) * elementSize);
-        gems.y = game.height / 2 - ((numberOfRows / 2) * elementSize);
+        gems.x = getCenterX();
+        gems.y = getCenterY();
 
         //Our board starts off with an empty array, we will push additional elements
         board = [];
@@ -105,8 +192,7 @@
                 var validElements = [0, 1, 2, 3, 4, 5];
 
                 //To the left
-                if (isValidIndex(row, column     - 1)) {
-                    console.log(board);
+                if (isValidIndex(row, column - 1)) {
                     validElements.splice(validElements.indexOf(board[row][column - 1].frame), 1);
                 }
                 //Above
@@ -123,7 +209,7 @@
                 //Instead of just generating a random number, we select one of the remaining values form validElements
                 //note as getRandomIntInclusive is inclusive we need to subtract one from the length, you could
                 //optionally make an exclusive version of getRandomInt
-                gem.frame = validElements[getRandomIntInclusive(0, validElements.length-1)];
+                gem.frame = validElements[getRandomIntInclusive(0, validElements.length - 1)];
 
                 //Finally we have created a gem and set its colour to a random value all that is left is to add it to the
                 //row, as we already added this row to the board we do not need anything besides add it to the row

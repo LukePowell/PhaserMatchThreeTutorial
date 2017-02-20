@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Part 1: Generating the Grid</title>
+    <script src="js/phaser.min.js"></script>
+</head>
+<body>
+<p> Our swaps are now limited to only those moves that are adjacent to our starting selection. After we make a move we
+    then need to determine if we made a match if we did we can remove those objects.
+</p>
+<a href="part5.html">Previous</a>
+<a href="part7.html">Next</a>
+<script>
+
+    var game = new Phaser.Game(800, 600, Phaser.AUTO, '', {preload: preload, create: create, update: update});
+    //This will hold our 2D array to represent our board. In JavaScript this is accomplished as an array of arrays
+    //With each array being one row in our code. To get an individual element we use board[row][column] to get an individual
+    //element
+    // ex.
+    // 0: [1, 2, 3, 4, 5, 6]
+    // 2: [7 ,8, 9, 10, 11, 12]
+    var board;
+
+    //Gems is a Phaser Group that is responsible for containing all of our gem sprites
+    var gems;
+
+    //Each Gem in our sprite sheet is 48x48 pixels, we use a var to prevent using any magic numbers
+    const elementSize = 48;
+    //The number of columns, again we want to prevent magic numbers, if we see numberOfColumns in our code it is easier
+    //to know why compared to an 8
+    const numberOfColumns = 8;
+    //Similar ato numberOfColumns we want to have a means to refer to the number of rows we have in a readable manner
+    const numberOfRows = 8;
+
+    var selectedScale = 1.2;
+    var normalScale = 1.0;
+
+    //This will store the gem that we currently have selected, or null if no gem is currently selected
+    var selectedGem = null;
+
+    function preload() {
+        //Before we can do anything with Phaser we need to tell it what assets we are going to use.
+        //To accomplish this Phaser uses a simple tagging system, when you load an asset you give it a name, then when
+        //you want to use it in a game you can simply tell Phaser to load the named asset. This allow us to only load
+        //the asset from disk once
+        //See: https://phaser.io/tutorials/making-your-first-phaser-game/part2
+        //game.load.spritesheet(name, source, widthOfElement, heightOfElement)
+        game.load.spritesheet('gem', 'assets/gems.png', elementSize, elementSize);
+
+        //Register our method to handle selecting an orb
+        game.input.onDown.add(selectGem);
+    }
+
+    function create() {
+        createGrid();
+    }
+
+
+    function update() {
+    }
+
+    /**
+     * Small helper function, this allows us to get a value from min to max inclusive.
+     * @param min The lower bound
+     * @param max The upper bound
+     * @returns {*} A random value from min to max including max
+     */
+    function getRandomIntInclusive(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+
+    /**
+     * This tests to see if a row and column is in bounds. This prevents us from indexing the array out of bounds.
+     * And allows us to skip various checks.
+     * @param row The row
+     * @param column The column
+     * @returns {boolean} True if the (column, row) is in bounds else false. Namely if we have a index < 0 or >= width/height
+     */
+    function isValidIndex(row, column) {
+        return row >= 0 && row <= numberOfRows && column >= 0 && column < numberOfColumns;
+    }
+
+
+    function getRow(yPosition) {
+        return Math.floor((yPosition - getCenterY()) / elementSize);
+    }
+
+    function getColumn(xPosition) {
+        return Math.floor((xPosition - getCenterX()) / elementSize);
+    }
+
+    /**
+     * Uses the squared distance between (row1, column1) and (row2, column2) to see if they are adjacent i.e. 1 unit
+     * apart
+     * @param row1 The row element of the first point
+     * @param column1 The column element of the first point
+     * @param row2 The row element of the second point
+     * @param column2 The column element of the second point
+     */
+    function isAdjacent(row1, column1, row2, column2) {
+        return ((row1 - row2) * (row1 - row2) + (column1 - column2) * (column1 - column2)) == 1;
+    }
+
+    /**
+     * Checks to see if there is a horizontal match starting at row and column
+     * @param row The row we are starting at
+     * @param column the column we are starting at
+     * @returns {boolean} True if there is a match else false
+     */
+    function isHorizontalMatch(row, column) {
+        //If any of the indices of the group of 3 we are checking are invalid it is impossible to make a match
+        if (!isValidIndex(row, column) || !isValidIndex(row, column + 1) || !isValidIndex(row, column + 2)) {
+            return false;
+        }
+
+        //a = b b = c implies a = c
+        return board[row][column].frame == board[row][column + 1].frame && board[row][column + 1].frame == board[row][column + 2].frame;
+    }
+
+    /**
+     * Checks to see if there is a vertical match starting at row and column
+     * @param row The row we are starting at
+     * @param column the column we are starting at
+     * @returns {boolean} True if there is a match else false
+     */
+    function isVerticalMatch(row, column) {
+        //If any of the indices of the group of 3 we are checking are invalid it is impossible to make a match
+        if (!isValidIndex(row, column) || !isValidIndex(row + 1, column) || !isValidIndex(row + 2, column)) {
+            return false;
+        }
+
+        //a = b b = c implies a = c
+        return board[row][column].frame == board[row + 1][column].frame && board[row + 1][column].frame == board[row + 2][column].frame;
+    }
+
+    /**
+     * If we simply want to check to see if we have a match in the entirety of the board this method
+     * will loop through the entirety of the board looking for any vertical or horizontal matches.
+     *
+     * When swapping gems we could as an alternate to checking just the rows/columns of the swapped gems use this.
+     * If gems are being destroyed this works find. However we more care if the move we just made made a match
+     */
+    function isMatch() {
+        //Check for vertical matches. We only need to check for matches of size 3 as that is our minimum
+        //We are going to check this by the expression board[row
+        for (var row = 0; row < numberOfRows; ++row) {
+            for (var column = 0; column < numberOfColumns; ++column) {
+                if (isHorizontalMatch(row, column) || isVerticalMatch(row, column)) {
+                    return true;
+                }
+            }
+        }
+        //If we got to this point it means that we did not find any matches in the entirety of the board
+        return false;
+    }
+
+    function swapGem(row, column, selectedRow, selectedColumn) {
+        //Swap the selected gem and the gem the user just clicked
+        var temp = board[row][column];
+        board[row][column] = board[selectedRow][selectedColumn];
+        board[selectedRow][selectedColumn] = temp;
+
+        //Swap the positions of the gems
+        temp = board[row][column].position;
+        board[row][column].position = board[selectedRow][selectedColumn].position;
+        board[selectedRow][selectedColumn].position = temp;
+
+        //Reset the size of the selected gem
+        selectedGem.scale.set(normalScale, normalScale);
+        selectedGem = null;
+    }
+
+    /**
+     * Checks to see if we have a match in a given row
+     * @param row The row we want to check for matches
+     */
+    function matchInRow(row) {
+        //We do not want to index our array out of bounds as we are trying to see if
+        // board[row][column] == board[row][column+1] == board[row][column+2] we can stop 2 from the end to achieve this
+        for (var column = 0; column < numberOfColumns - 2; ++column) {
+
+            //a = b b = c implies a = c
+            if (board[row][column].frame == board[row][column + 1].frame && board[row][column + 1].frame == board[row][column + 2].frame) {
+                return true;
+            }
+        }
+        //There were no matches in the row if we got to this point
+        return false;
+    }
+
+    /**
+     * Checks to see if we have a match in a given column
+     * @param column The row we want to check for matches
+     */
+    function matchInColumn(column) {
+        //We do not want to index our array out of bounds as we are trying to see if
+        // board[row][column] == board[row+1][column] == board[row+2][column] we can stop 2 from the end to achieve this
+        for (var row = 0; row < numberOfRows - 2; ++row) {\
+
+            //a = b b = c implies a = c
+            if (board[row][column].frame == board[row + 1][column].frame && board[row + 1][column].frame == board[row + 2][column].frame) {
+                return true;
+            }
+        }
+
+        //There were no matches in the column if we got to this point
+        return false;
+    }
+    /**
+     * Responds to mouse down events
+     */
+    function selectGem() {
+        //We translated our grid to the center of the map, here we undo that translation before we divide by elementSize
+        //this allows the upper left to be (0,0) which is what we want
+
+        //We ignore the event we are passed in and use game.input.x and game.input.y as that is relative to Phasers
+        //top left not the web pages
+        var column = getColumn(game.input.x);
+        var row = getRow(game.input.y);
+
+        if (!isValidIndex(row, column)) {
+            return;
+        }
+
+        if (selectedGem != null) {
+            //Calculate where the selected gem is in the board, note we use worldPosition here.
+            //position and x/y are relative to the top of the group. worldPosition gives us the position of the object
+            //in the world reference frame. This allow us to use are helpful getColumn and getRow function
+            var selectedColumn = getColumn(selectedGem.worldPosition.x);
+            var selectedRow = getRow(selectedGem.worldPosition.y);
+
+            if (!isAdjacent(row, column, selectedRow, selectedColumn)) {
+                //Reset the size of the selected gem
+                selectedGem.scale.set(normalScale, normalScale);
+                selectedGem = null;
+                return;
+            }
+
+            //We refactored this logic out to a function as we will want to swap our gems back if an invalid input
+            //was made
+            swapGem(row, column, selectedRow, selectedColumn);
+
+            //Check to see if we made a match, we can only make moves in four directions, after a move we should find
+            //a match in either the column or row of either piece we swapped
+            if (!matchInRow(row) && !matchInRow(selectedRow) && !matchInColumn(column) && !matchInColumn(selectedColumn)) {
+                //Simply swap back the gems when there is no match
+                swapGem(row, column, selectedRow, selectedColumn);
+            }
+        } else {
+            selectedGem = board[row][column];
+            selectedGem.scale.set(selectedScale, selectedScale);
+        }
+    }
+
+    //These two functions where moved to functions so we can reuse the code. When calculating the grid position of where
+    //we clicked from the x and the y we need to subtract this value, in our calculations
+    /**
+     * Returns the position of the top left corner of the grid x position
+     * @returns {number} The x position of the top left corner of the grid
+     */
+    function getCenterX() {
+        return game.width / 2 - ((numberOfColumns / 2) * elementSize);
+    }
+
+    /**
+     * Returns the the top left corner of the grid's y position
+     * @returns {number} The y position of the top left corner of the grid
+     */
+    function getCenterY() {
+        return game.height / 2 - ((numberOfRows / 2) * elementSize);
+    }
+
+
+    function createGrid() {
+        //Create our gems group
+        gems = game.add.group();
+
+        //If we want we can center the grid in the center of the screen.
+        //game.width / 2 and game.height / 2 give the center of center of the screen. However a group is also positioned
+        //by its upper left corner so we need to need to subtract half of the width/height in each respective direction
+        gems.x = getCenterX();
+        gems.y = getCenterY();
+
+        //Our board starts off with an empty array, we will push additional elements
+        board = [];
+
+        for (var row = 0; row < numberOfRows; ++row) {
+            //We use this array to store each element in this row
+            var rowElements = [];
+
+            //To make our grid we want to push our row into the board, note row is a reference so we if we do row.push
+            //it will affect this
+            board.push(rowElements);
+            for (var column = 0; column < numberOfColumns; ++column) {
+                //This array contains all possible frames we can start with. We will check the element above us and
+                //to the left of us if they exist and remove those choices from this array. Finally we will chose
+                //a random element of the array. As we removed the values of the elements that could make matches
+                //we will be guaranteed not to have a match
+                var validElements = [0, 1, 2, 3, 4, 5];
+
+                //To the left
+                if (isValidIndex(row, column - 1)) {
+                    validElements.splice(validElements.indexOf(board[row][column - 1].frame), 1);
+                }
+                //Above
+                if (isValidIndex(row - 1, column)) {
+                    validElements.splice(validElements.indexOf(board[row - 1][column].frame), 1);
+                }
+
+                //Create a gem, to determine its position we simply multiply the current column and row by elementSize
+                //For (0,0) this gives us (0,0), then for (1,0) 48, 0 and so on as the elements are positioned by their
+                //top left corner this will place them into a neat grid. Feel free to use a sheet of graph paper, and
+                //a size of 1 to check this math
+                var gem = gems.create(column * elementSize, row * elementSize, 'gem');
+
+                //Instead of just generating a random number, we select one of the remaining values form validElements
+                //note as getRandomIntInclusive is inclusive we need to subtract one from the length, you could
+                //optionally make an exclusive version of getRandomInt
+                gem.frame = validElements[getRandomIntInclusive(0, validElements.length - 1)];
+
+                //Finally we have created a gem and set its colour to a random value all that is left is to add it to the
+                //row, as we already added this row to the board we do not need anything besides add it to the row
+                rowElements.push(gem);
+            }
+        }
+    }
+</script>
+</body>
+</html>
