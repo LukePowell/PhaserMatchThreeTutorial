@@ -2,22 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Part 7: Detecting Matches</title>
+    <title>Part 8: Making The Gems Drop and Replenish</title>
     <script src="js/phaser.min.js"></script>
 </head>
 <body>
-<p> We now limit swaps to adjacent positions that generate a match. However we do not do anything with these matches.
-    We can visually see the matches that we made in the board. However we have yet to write a function to let the
-    computer
-    do the same.
+<p> We successfully made our program able to select matched groups of gems. In this part we are going to make the gems
+    "fall" and replenish.
 </p>
-<p>
-    For now we are going to write a function to find all matches in a board and create a list of these matches for us.
-    We will do this for all matches in the board not just those created by our move. This will come in handy in the next
-    step when we want to cause tiles to fall and replenish the ones we deleted.
-</p>
-<a href="part6.html">Previous</a>
-<a href="part8.html">Next</a>
+<a href="part7.html">Previous</a>
+<a href="../index.html">Finish</a>
 <script>
 
     var game = new Phaser.Game(800, 600, Phaser.AUTO, '', {preload: preload, create: create, update: update});
@@ -243,7 +236,7 @@
                 possibleMatches.push(board[row][column]);
 
                 //While the subsequent element of the row is the same as the previous add it to the list of possibleMatches
-                while (column < numberOfColumns - 1 && board[row][column].frame === board[row][column + 1].frame) {
+                while (column < numberOfColumns - 1 && board[row][column].frame == board[row][column + 1].frame) {
                     possibleMatches.push(board[row][column + 1]);
                     ++column;
                 }
@@ -272,7 +265,7 @@
                 possibleMatches.push(board[row][column]);
 
                 //While the subsequent element of the row is the same as the previous add it to the list of possibleMatches
-                while (row < numberOfColumns - 1 && board[row][column].frame === board[row + 1][column].frame) {
+                while (row < numberOfRows - 1 && board[row][column].frame == board[row + 1][column].frame) {
                     possibleMatches.push(board[row + 1][column]);
                     ++row;
                 }
@@ -290,6 +283,89 @@
         return matches;
     }
 
+    function moveGem(gem, row, column) {
+        //Update the board to the gems new position
+        board[row][column] = gem;
+
+        //We need to update both the position and the world position of the gem.
+        gem.position.set(elementSize * column, elementSize * row);
+        gem.worldPosition.set(elementSize * column + getCenterX(), elementSize * row + getCenterY());
+    }
+
+    /**
+     * This drops a gem by iterating through all columns, looking for the bottom most null element. Once this element is
+     * found each element above that is not-null is moved to the last known null position, which is then moved up by one
+     */
+    function dropGems() {
+        for (var column = 0; column < numberOfColumns; ++column) {
+            var row = numberOfRows - 1;
+            //Find bottom most element that is null to achieve this we are going to iterate from the bottom up.
+            //simply stop when we find the bottom most element that is null if any
+            while (row >= 0 && board[row][column] != null) {
+                --row;
+            }
+
+            //This is the lowest point that is null each element that is not null will need to fall down starting here
+            var bottom = row;
+
+            //Until we reach the top of the column if we find a non-null element move it to the last known empty position
+            while (row >= 0) {
+                if (board[row][column] != null) {
+                    //Move the gem down
+                    moveGem(board[row][column], bottom, column);
+                    //The gem has been moved the current location is now vacated clear it out with a null
+                    board[row][column] = null;
+                    //Update the last known empty position
+                    --bottom;
+                }
+
+                --row;
+            }
+        }
+    }
+
+    function createGemAt(row, column) {
+
+        //This array contains all possible frames we can start with. We will check the element above us and
+        //to the left of us if they exist and remove those choices from this array. Finally we will chose
+        //a random element of the array. As we removed the values of the elements that could make matches
+        //we will be guaranteed not to have a match
+        var validElements = [0, 1, 2, 3, 4, 5];
+
+        //To the left
+        if (isValidIndex(row, column - 1)) {
+            validElements.splice(validElements.indexOf(board[row][column - 1].frame), 1);
+        }
+        //Above
+        if (isValidIndex(row - 1, column)) {
+            validElements.splice(validElements.indexOf(board[row - 1][column].frame), 1);
+        }
+
+        //Create a gem, to determine its position we simply multiply the current column and row by elementSize
+        //For (0,0) this gives us (0,0), then for (1,0) 48, 0 and so on as the elements are positioned by their
+        //top left corner this will place them into a neat grid. Feel free to use a sheet of graph paper, and
+        //a size of 1 to check this math
+        var gem = gems.create(column * elementSize, row * elementSize, 'gem');
+
+        //Instead of just generating a random number, we select one of the remaining values form validElements
+        //note as getRandomIntInclusive is inclusive we need to subtract one from the length, you could
+        //optionally make an exclusive version of getRandomInt
+        gem.frame = validElements[getRandomIntInclusive(0, validElements.length - 1)];
+
+        return gem;
+    }
+
+    function fillGems(){
+        //Simply create a gem at any position that is null in the board
+        for(var row = 0; row < numberOfRows; ++row){
+            for(var column = 0; column < numberOfColumns; ++column){
+                if(board[row][column] == null){
+                    board[row][column] = createGemAt(row, column);
+                }
+            }
+        }
+    }
+    
     /**
      * Responds to mouse down events
      */
@@ -330,14 +406,28 @@
                 //Simply swap back the gems when there is no match
                 swapGem(row, column, selectedRow, selectedColumn);
             } else {
-                var matches = selectAllMatches();
-                for (var i = 0; i < matches.length; ++i) {
-                    var match = matches[i];
-                    for (var j = 0; j < match.length; ++j) {
-                        //For now we are just going to set the scale so we can see that our code works
-                        match[j].scale.set(2.0, 2.0);
+                //While there are still matches on the board we need to repeat this logic
+                do {
+                    //Find the list of all matches on the board
+                    var matches = selectAllMatches();
+
+                    for (var i = 0; i < matches.length; ++i) {
+                        var match = matches[i];
+                        //For all of the gems in a match we need to set the position they are at to zero then kill
+                        //the gem removing it from the game
+                        for (var j = 0; j < match.length; ++j) {
+                            //Clear the board position
+                            board[getRow(match[j].worldPosition.y)][getColumn(match[j].worldPosition.x)] = null;
+                            //Kill the object removing it from the game
+                            match[j].kill();
+                        }
                     }
-                }
+
+                    //We removed all the gems that were matched
+                    dropGems();
+                    //Fill in the holes left in our board
+                    fillGems();
+                }while(isMatch())
             }
         } else {
             selectedGem = board[row][column];
@@ -385,31 +475,9 @@
             //it will affect this
             board.push(rowElements);
             for (var column = 0; column < numberOfColumns; ++column) {
-                //This array contains all possible frames we can start with. We will check the element above us and
-                //to the left of us if they exist and remove those choices from this array. Finally we will chose
-                //a random element of the array. As we removed the values of the elements that could make matches
-                //we will be guaranteed not to have a match
-                var validElements = [0, 1, 2, 3, 4, 5];
 
-                //To the left
-                if (isValidIndex(row, column - 1)) {
-                    validElements.splice(validElements.indexOf(board[row][column - 1].frame), 1);
-                }
-                //Above
-                if (isValidIndex(row - 1, column)) {
-                    validElements.splice(validElements.indexOf(board[row - 1][column].frame), 1);
-                }
-
-                //Create a gem, to determine its position we simply multiply the current column and row by elementSize
-                //For (0,0) this gives us (0,0), then for (1,0) 48, 0 and so on as the elements are positioned by their
-                //top left corner this will place them into a neat grid. Feel free to use a sheet of graph paper, and
-                //a size of 1 to check this math
-                var gem = gems.create(column * elementSize, row * elementSize, 'gem');
-
-                //Instead of just generating a random number, we select one of the remaining values form validElements
-                //note as getRandomIntInclusive is inclusive we need to subtract one from the length, you could
-                //optionally make an exclusive version of getRandomInt
-                gem.frame = validElements[getRandomIntInclusive(0, validElements.length - 1)];
+                //Note: This has been moved to a function to allow fillGems to use the code.
+                var gem = createGemAt(row, column);
 
                 //Finally we have created a gem and set its colour to a random value all that is left is to add it to the
                 //row, as we already added this row to the board we do not need anything besides add it to the row

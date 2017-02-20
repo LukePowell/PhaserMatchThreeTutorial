@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Part 1: Generating the Grid</title>
+    <title>Part 6: Restricting Moves to Match Makers</title>
     <script src="js/phaser.min.js"></script>
 </head>
 <body>
@@ -168,6 +168,10 @@
         temp = board[row][column].position;
         board[row][column].position = board[selectedRow][selectedColumn].position;
         board[selectedRow][selectedColumn].position = temp;
+
+        temp = board[row][column].worldPosition;
+        board[row][column].worldPosition = board[selectedRow][selectedColumn].worldPosition;
+        board[selectedRow][selectedColumn].worldPosition = temp;
 
         //Reset the size of the selected gem
         selectedGem.scale.set(normalScale, normalScale);
